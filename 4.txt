@@ -1,0 +1,113 @@
+options locale =EN_US;
+data q1;
+input x y;
+datalines;
+8 1
+7 1
+3 2
+2 2
+3 2
+4 2
+5 3
+3 3
+4 5
+7 6
+;
+run;
+
+proc reg data = q1 plots = (residualplot residualbypredicted qqplot);
+model y = x/partial;
+run;
+
+proc transreg details data = q1 ss2 plots=residuals ;
+model boxcox(y/lambda = -2 to 2 by 0.05) = identity(x) ;
+run;
+
+data q1_2;
+set q1;
+ynew_1 = y**(-0.35);
+ynew_2 =log(y);
+run;
+
+
+proc reg data = q1_2 plots = (residualplot residualbypredicted qqplot);
+model ynew_1 = x/partial;
+run;
+
+proc reg data = q1_2 plots = (residualplot residualbypredicted qqplot);
+model ynew_2 = x/partial;
+run;
+
+
+//////////////////////////////
+options locale =EN_US;
+data q3;
+input x y;
+datalines;
+16 77
+14 70
+22 85
+10 50
+14 62
+17 70
+10 55
+13 63
+19 88
+12 57
+18 81
+11 51
+;
+run;
+
+
+proc reg data = q3 plots=(residualplot residualbypredicted qqplot );
+model y = x/partial;
+output out=q3_1 residual = r predicted = p;
+run;
+proc sgplot data = q3_1;
+scatter x = y y = r;
+run;
+
+data q3_2;
+set q3_1;
+absr = abs(r);
+run;
+proc reg data = q3_2;
+model absr = p;
+output out = q3_3 predicted = si;
+run;
+
+data q3_4;
+set q3_3;
+weight = 1/si**2;
+run;
+
+proc print data = q3_4;
+var weight;
+run;
+
+proc reg data = q3_4 plots=(residualplot residualbypredicted qqplot) ;
+model y = x;
+weight weight;
+run;
+//////////////////////////////
+options locale =EN_US;
+PROC IMPORT datafile="/home/u62289926/survival.csv" out =q4 dbms=csv;
+data q4 ;
+set q4;
+logsa = log(survival);
+run;
+
+proc sgplot data = q4;
+scatter x = dosage y = logsa;
+run;
+proc reg data = q4 plots = (residualplot residualbypredicted qqplot);
+model logsa = dosage;
+output out = survival_3 residual = r predicted = p;
+run;
+
+proc means data = q4;
+var logsa;
+by dosage;
+output out=stdsummary std= std_y;
+run;

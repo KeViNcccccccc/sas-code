@@ -1,0 +1,32 @@
+options locale =EN_US;
+PROC IMPORT datafile="/home/u62289926/scores.csv" out =A1 dbms=csv;
+run;
+
+PROC CORR data= A1;
+   VAR Hours Scores;
+RUN;
+
+proc sgplot data= A1;
+    scatter x=Hours y=Scores;
+run;
+
+proc reg data= A1;
+  model Scores = Hours;
+run;
+
+
+
+//////////////////////////////////////
+
+options locale =EN_US;
+PROC IMPORT datafile="/home/u62289926/sasuser.v94/A2.csv" out =A2 dbms=csv;
+run;
+
+proc reg data = A2;
+   model y = x1 x2;
+run;
+
+ods select Basicintervals;
+proc univariate data = A2 cibasic;
+   var y x1 x2;
+run;

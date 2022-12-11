@@ -1,0 +1,67 @@
+data my_data;
+    input x y;
+    datalines;
+1 4.1
+1 3.58
+1 3.84
+3 2.07
+3 2.14
+3 2.21
+5 1.53
+5 1.58
+5 1.48
+7 1.21
+7 1.17
+7 1.16
+9 1.08
+9 1.09
+9 1.07
+;
+run;
+
+/*view dataset*/
+proc print data=my_data;
+
+symbol value = circle;
+proc reg data=my_data;
+   model y = x;
+   plot residual. * predicted.;
+run;
+
+
+
+
+
+options locale =EN_US;
+PROC IMPORT datafile="/home/u62289926/sasuser.v94/trees.csv" out =A3 dbms=csv;
+run;
+data A3;
+  set A3;
+  trans = log(Volume);
+run;
+proc reg data = A3;
+model trans = diameter height;
+run;
+
+
+
+PROC IMPORT datafile="/home/u62289926/sasuser.v94/trees.csv" out =A3 dbms=csv;
+run;
+data A3;
+  set A3;
+  trans = log(Volume);
+run;
+proc reg data = A3;
+model trans = diameter height;
+run;
+
+options locale =EN_US;
+PROC IMPORT datafile="/home/u62289926/sasuser.v94/outliersData.csv" out =A4 dbms=csv;
+run;
+proc reg data = A4;
+model Y = x1 x2 x3 x4 x5 x6;
+run;
+
+proc reg data = A4 plots(only label) =(CooksD RStudentByLeverage);
+model Y = x1 x2 x3 x4 x5 x6;
+run;
