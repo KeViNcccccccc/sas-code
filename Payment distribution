@@ -1,0 +1,91 @@
+with raw as
+(
+select 
+    bundle_id,
+    policy_id,
+    max(created_at) as created_at_time,
+    groupArray(payment_method) as payment_method_array, -- An array for all payment methods that the policy has
+    groupArray(payment_type) as payment_type_array,  -- An array for all payment types that the policy has
+    groupArray(toString(payment_method) || '-' || toString(payment_type)) as method_and_type_array,  -- An array for all payment method-type combinations that the policy has
+    has(payment_method_array, 0) as has_card, -- Examples of determining whether a policy has a certain payment method
+    has(payment_method_array, 1) as has_EFT,
+    case when has(payment_method_array, 0) = 1 and has(payment_method_array, 1) = 0 then 1 else 0 end as has_card_only, -- Examples of determining whether a policy ONLY has a certain payment method
+    case when has(payment_method_array, 0) = 0 and has(payment_method_array, 1) = 1 then 1 else 0 end as has_eft_only,
+    case when has(payment_method_array, 0) = 1 and has(payment_method_array, 1) = 1 then 1 else 0 end as has_eft_and_card,
+    has(payment_type_array, 0) as has_installment,
+    has(payment_type_array, 1) as has_PIF,
+    case when has(payment_type_array, 0) = 1 and has(payment_type_array, 1) = 0 then 1 else 0 end as has_installment_only,
+    case when has(payment_type_array, 0) = 0 and has(payment_type_array, 1) = 1 then 1 else 0 end as has_pif_only,
+    case when has(payment_type_array, 0) = 1 and has(payment_type_array, 1) = 1 then 1 else 0 end as has_installment_and_pif,
+    case when has(method_and_type_array, '1-1') = 1 and has(method_and_type_array, '1-0') = 0 then 1 else 0 end as only_pif_for_eft,
+    case when has(method_and_type_array, '0-1') = 1 and has(method_and_type_array, '0-0') = 0 then 1 else 0 end as only_pif_for_card,
+    case when has(method_and_type_array, '1-0') = 1 and has(method_and_type_array, '1-1') = 0 then 1 else 0 end as only_installment_for_eft,
+    case when has(method_and_type_array, '0-0') = 1 and has(method_and_type_array, '0-1') = 0 then 1 else 0 end as only_installment_for_card
+from main.policy_bundle_prices
+where case 
+            when {{unit}} = 'day' then toStartOfDay(created_at) > toStartOfDay(now()) - interval {{num_rows}} + 1 day
+            when {{unit}} = 'week' then toMonday(created_at) > toMonday(now()) - interval {{num_rows}} + 1 week
+            else toStartOfMonth(created_at) > toStartOfMonth(now()) - interval {{num_rows}} + 1 month
+        end
+[[and policy_id in (select policy_id from magic.mv_policy_savings where fp_apum > 0 and {{carrier_name}})]]
+[[and policy_id in (select policy_id from magic.mv_policy_savings where fp_apum > 0 and {{policy_type}})]]
+[[and bundle_id in (select id from main.policy_bundles where user_id in (select decrypted_user_id from magic.mv_standard_funnel_v2_extend where final_price_ready > 0 and {{age_group}}))]]
+[[and bundle_id in (select id from main.policy_bundles where user_id in (select decrypted_user_id from magic.mv_standard_funnel_v2_extend where final_price_ready > 0 and {{state}}))]]
+[[and bundle_id in (select id from main.policy_bundles where user_id in (select decrypted_user_id from magic.mv_standard_funnel_v2_extend where final_price_ready > 0 and {{currently_insured}}))]]
+[[and bundle_id in (select id from main.policy_bundles where dictGet('magic.dict_user_reported_credit', 'credit_range', toUInt64(user_id)) in (select credit_range from sheets.dropdown_names where {{credit_range}}))]]
+group by bundle_id, policy_id
+having 1 
+[[and case when {{has_EFT}} = 'yes' then has_EFT = 1 when {{has_EFT}} = 'no' then has_EFT = 0 end]]
+[[and case when {{has_CC}} = 'yes' then has_card = 1 when {{has_CC}} = 'no' then has_card = 0 end]]
+)
+
+select 
+    toDate(time) as Date,
+    number_of_fps,
+    `%_card_only`,
+    `%_eft_only`,
+    `%_eft_and_card`,
+    `%_pif_only`,
+    `%_installment_only`,
+    `%_pif_and_installment`,
+    
+    `%_has_only_installment_for_eft / has_eft`,
+    `%_has_only_pif_for_eft / has_eft`,
+    `%_has_only_installment_for_card / has_card`,
+    `%_has_only_pif_for_card / has_card`
+from
+(
+select
+    case 
+        when {{unit}} = 'day' then toStartOfDay(created_at_time) 
+        when {{unit}} = 'week' then toMonday(created_at_time) 
+        when {{unit}} = 'month' then toStartOfMonth(created_at_time) 
+    end as time,
+    -- count(distinct policy_id) as number_of_policy,
+    count(distinct bundle_id)  as number_of_fps,
+    count(distinct case when has_card_only = 1 then bundle_id end) as card_only,
+    card_only / number_of_fps as `%_card_only`,
+    count(distinct case when has_eft_only = 1 then bundle_id end) as eft_only,
+    eft_only / number_of_fps as `%_eft_only`,
+    count(distinct case when has_eft_and_card = 1 then bundle_id end) as eft_and_card,
+    eft_and_card / number_of_fps as `%_eft_and_card`,
+    count(distinct case when has_pif_only = 1 then bundle_id end) as pif_only,
+    pif_only / number_of_fps as `%_pif_only`,
+    count(distinct case when has_installment_only = 1 then bundle_id end) as installment_only,
+    installment_only / number_of_fps as `%_installment_only`,
+    count(distinct case when has_installment_and_pif = 1 then bundle_id end) as pif_and_installment,
+    pif_and_installment / number_of_fps as `%_pif_and_installment`,
+    
+    count(distinct case when has_EFT = 1 then bundle_id end) as `#_has_eft`,
+    count(distinct case when only_pif_for_eft = 1 then bundle_id end) as `#_has_only_pif_for_eft`,
+    `#_has_only_pif_for_eft` / `#_has_eft` as `%_has_only_pif_for_eft / has_eft`,
+    count(distinct case when only_installment_for_eft = 1 then bundle_id end) as `#_has_only_installment_for_eft`,
+    `#_has_only_installment_for_eft` / `#_has_eft` as `%_has_only_installment_for_eft / has_eft`,
+    count(distinct case when has_card = 1 then bundle_id end) as `#_has_card`,
+    count(distinct case when only_pif_for_card = 1 then bundle_id end) as `#_has_only_pif_for_card`,
+    `#_has_only_pif_for_card` / `#_has_card` as `%_has_only_pif_for_card / has_card`,
+    count(distinct case when only_installment_for_card = 1 then bundle_id end) as `#_has_only_installment_for_card`,
+    `#_has_only_installment_for_card` / `#_has_card` as `%_has_only_installment_for_card / has_card`
+from raw
+group by time order by time desc
+)
