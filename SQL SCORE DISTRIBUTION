@@ -1,0 +1,69 @@
+With test as(
+select
+    case 
+        when {{unit}} = 'day' then toStartOfDay(end_time) 
+        when {{unit}} = 'week' then toMonday(end_time) 
+        when {{unit}} = 'month' then toStartOfMonth(end_time) 
+    end as time,
+    count(id) as total,
+    count(distinct id), count(distinct driver_id)  as users, 
+    count(distinct drive_id),count(distinct car_id),
+    count(star_rating) as ratingnum,
+    count(case when star_rating = 5 then star_rating end) as 5star,
+    count(case when star_rating = 4 then star_rating end) as 4star,
+    count(case when star_rating = 3 then star_rating end) as 3star,
+    count(case when star_rating = 2 then star_rating end) as 2star,
+    count(case when star_rating = 1 then star_rating end) as 1star,
+    count(case when score = 100 then score end) as score100, 
+    count(case when score > 90 and score  != 100 Then score end) as score90above,
+    count(case when score > 70 and score <= 90 Then score end) as score70bw90,
+    count(case when score > 50 and score <= 70 Then score end) as score50bw70,
+    count(case when score <= 50  Then score end) as score50bl,
+    count(score) as numbers_of_user_received_score
+from telematics.trips
+where case 
+            when {{unit}} = 'day' then toStartOfDay(end_time) > toStartOfDay(now()) - interval {{num_rows}} + 1 day
+            when {{unit}} = 'week' then toMonday(end_time) > toMonday(now()) - interval {{num_rows}} + 1 week
+            else toStartOfMonth(end_time) > toStartOfMonth(now()) - interval {{num_rows}} + 1 month
+        end
+and end_time <= now()
+group by time order by time desc),
+
+raw as(
+select 
+    case 
+        when {{unit}} = 'day' then toStartOfDay(updated_at) 
+        when {{unit}} = 'week' then toMonday(updated_at) 
+        when {{unit}} = 'month' then toStartOfMonth(updated_at) 
+    end as time,
+    count(case when overall = 100 then overall end) as score100, 
+    count(case when overall > 90 and overall  != 100 Then overall end) as score90above,
+    count(case when overall > 70 and overall <= 90 Then overall end) as score70bw90,
+    count(case when overall > 50 and overall <= 70 Then overall end) as score50bw70,
+    count(case when overall <= 50  Then overall end) as score50bl
+from telematics.driver_scores 
+where case 
+            when {{unit}} = 'day' then toStartOfDay(updated_at) > toStartOfDay(now()) - interval {{num_rows}} + 1 day
+            when {{unit}} = 'week' then toMonday(updated_at) > toMonday(now()) - interval {{num_rows}} + 1 week
+            else toStartOfMonth(updated_at) > toStartOfMonth(now()) - interval {{num_rows}} + 1 month
+        end
+and updated_at <= now()
+group by time order by time desc
+)
+
+select 
+    time,
+    numbers_of_user_received_score as `#_of_user_received_score`,
+    score100 / numbers_of_user_received_score as `% users driving score100`,
+    score90above / numbers_of_user_received_score as `% users above 90`,
+    score70bw90 / numbers_of_user_received_score as `% users b/w 70-90`,
+    score50bw70 / numbers_of_user_received_score as `% users b/w 50-70`,
+    score50bl / numbers_of_user_received_score as `% users below 50`,
+    5star / ratingnum as `% 5-star trips today`,
+    4star / ratingnum as `% 4-star trips today`,
+    3star / ratingnum as `% 3-star trips today`,
+    2star / ratingnum as `% 2-star trips today`,
+    1star / ratingnum as `% 1-star trips today`,
+    total as `# of drivng events detected`,
+    users as `# of users`
+from test, raw
