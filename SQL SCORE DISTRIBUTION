@@ -13,13 +13,7 @@ select
     count(case when star_rating = 4 then star_rating end) as 4star,
     count(case when star_rating = 3 then star_rating end) as 3star,
     count(case when star_rating = 2 then star_rating end) as 2star,
-    count(case when star_rating = 1 then star_rating end) as 1star,
-    count(case when score = 100 then score end) as score100, 
-    count(case when score > 90 and score  != 100 Then score end) as score90above,
-    count(case when score > 70 and score <= 90 Then score end) as score70bw90,
-    count(case when score > 50 and score <= 70 Then score end) as score50bw70,
-    count(case when score <= 50  Then score end) as score50bl,
-    count(score) as numbers_of_user_received_score
+    count(case when star_rating = 1 then star_rating end) as 1star
 from telematics.trips
 where case 
             when {{unit}} = 'day' then toStartOfDay(end_time) > toStartOfDay(now()) - interval {{num_rows}} + 1 day
@@ -27,7 +21,8 @@ where case
             else toStartOfMonth(end_time) > toStartOfMonth(now()) - interval {{num_rows}} + 1 month
         end
 and end_time <= now()
-group by time order by time desc),
+group by time order by time desc
+),
 
 raw as(
 select 
@@ -35,12 +30,13 @@ select
         when {{unit}} = 'day' then toStartOfDay(updated_at) 
         when {{unit}} = 'week' then toMonday(updated_at) 
         when {{unit}} = 'month' then toStartOfMonth(updated_at) 
-    end as time,
+    end as time2,
     count(case when overall = 100 then overall end) as score100, 
     count(case when overall > 90 and overall  != 100 Then overall end) as score90above,
     count(case when overall > 70 and overall <= 90 Then overall end) as score70bw90,
     count(case when overall > 50 and overall <= 70 Then overall end) as score50bw70,
-    count(case when overall <= 50  Then overall end) as score50bl
+    count(case when overall <= 50  Then overall end) as score50bl,
+    count(overall) as numbers_of_user_received_score
 from telematics.driver_scores 
 where case 
             when {{unit}} = 'day' then toStartOfDay(updated_at) > toStartOfDay(now()) - interval {{num_rows}} + 1 day
@@ -48,22 +44,23 @@ where case
             else toStartOfMonth(updated_at) > toStartOfMonth(now()) - interval {{num_rows}} + 1 month
         end
 and updated_at <= now()
-group by time order by time desc
+group by time2 order by time2 desc
 )
 
 select 
-    time,
+    time2 as `time`,
     numbers_of_user_received_score as `#_of_user_received_score`,
     score100 / numbers_of_user_received_score as `% users driving score100`,
     score90above / numbers_of_user_received_score as `% users above 90`,
     score70bw90 / numbers_of_user_received_score as `% users b/w 70-90`,
     score50bw70 / numbers_of_user_received_score as `% users b/w 50-70`,
     score50bl / numbers_of_user_received_score as `% users below 50`,
-    5star / ratingnum as `% 5-star trips today`,
-    4star / ratingnum as `% 4-star trips today`,
-    3star / ratingnum as `% 3-star trips today`,
-    2star / ratingnum as `% 2-star trips today`,
-    1star / ratingnum as `% 1-star trips today`,
-    total as `# of drivng events detected`,
-    users as `# of users`
-from test, raw
+    test.5star / test.ratingnum as `% 5-star trips today`,
+    test.4star / test.ratingnum as `% 4-star trips today`,
+    test.3star / test.ratingnum as `% 3-star trips today`,
+    test.2star / test.ratingnum as `% 2-star trips today`,
+    test.1star / test.ratingnum as `% 1-star trips today`,
+    test.total as `# of drivng events detected`,
+    test.users as `# of users`
+from raw
+right join test on raw.time2 = test.time
