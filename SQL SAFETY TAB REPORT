@@ -41,7 +41,7 @@ Select
     count(distinct case when event_label =  'ViewOthersProfile' then dec_user_id end) as `num_click_connection_profile`,
     `num_click_connection_profile` / `#_view_safety_tab` as `%clicked_profile`,
     count(distinct case when event_label =  'ClickFeedTripCard' then dec_user_id end) as `num_click_trips_card`,
-    `num_click_trips_card` / `#_view_safety_tab` as `%click_trip_cards`
+    `num_click_trips_card` / `#_view_safety_tab` as `%click_trip_cards`,
     count(distinct case when event_label =  'ClickSafetySettings'then dec_user_id end) as `num_view_safety_setting`,
     `num_view_safety_setting` / `#_view_safety_tab` as `%view_safety_setting`,
     count(distinct case when event_label =  'Click'then dec_user_id end) as `num_click_floating_button`,
