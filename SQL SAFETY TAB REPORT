@@ -1,0 +1,53 @@
+With raw as 
+(
+Select 
+    event_label,
+    dec_user_id,
+    created_at
+
+from events.track_all
+where date >= '2023-8-1'
+and (event_label =  'ViewSafetyTab' 
+or event_label = 'ClickPerksCard' 
+or event_label = 'ClickDrivingScoreCard' 
+or event_label = 'ClickPerksCard' 
+or event_label = 'ViewOthersProfile' 
+or event_label = 'ClickFeedTripCard' 
+or event_label = 'ClickSafetySettings'
+or event_label = 'Click'
+or event_label = 'CheckIn')
+),
+
+place as(
+select 
+    count(distinct address_id),
+    user_id
+from telematics.places
+group by user_id   
+)
+
+
+Select 
+        case 
+        when {{unit}} = 'day' then toStartOfDay(created_at) 
+        when {{unit}} = 'week' then toMonday(created_at) 
+        when {{unit}} = 'month' then toStartOfMonth(created_at) 
+    end as time,
+    count(distinct case when event_label =  'ViewSafetyTab' then dec_user_id end) as `#_view_safety_tab`,
+    count(distinct case when event_label = 'ClickPerksCard' then dec_user_id end) as `num_view_click_points_card`,
+     `num_view_click_points_card` / `#_view_safety_tab`  as  `%clicked_points_card`,
+    count(distinct case when event_label = 'ClickDrivingScoreCard' then dec_user_id end) as `num_clicked_driving_score_card`,
+    `num_clicked_driving_score_card` / `#_view_safety_tab` as `%clicked_driving_score_card`,
+    count(distinct case when event_label =  'ViewOthersProfile' then dec_user_id end) as `num_click_connection_profile`,
+    `num_click_connection_profile` / `#_view_safety_tab` as `%clicked_profile`,
+    count(distinct case when event_label =  'ClickFeedTripCard' then dec_user_id end) as `num_click_trips_card`,
+    `num_click_trips_card` / `#_view_safety_tab` as `%click_trip_cards`
+    count(distinct case when event_label =  'ClickSafetySettings'then dec_user_id end) as `num_view_safety_setting`,
+    `num_view_safety_setting` / `#_view_safety_tab` as `%view_safety_setting`,
+    count(distinct case when event_label =  'Click'then dec_user_id end) as `num_click_floating_button`,
+    `num_click_floating_button` / `#_view_safety_tab` as `%click floating button`,
+    count(distinct case when event_label =  'CheckIn'then dec_user_id end) as `num_Check_in`,
+    `num_Check_in` / `#_view_safety_tab` as  `%checkin`
+from raw
+--left join place on raw.dec_user_id = place.user_id
+group by time order by time desc limit 9
