@@ -1,0 +1,166 @@
+import numpy as np
+import pandas as pd
+from scipy.optimize import minimize
+import baostock as bs
+
+
+# 登录系统
+bs.login()
+
+# 设置需要获取数据的股票列表和时间段
+stock_list = ["sh.600000", "sh.600016", "sh.600019", "sh.600028", "sh.600029"]
+start_date = '2022-01-01'
+end_date = '2022-12-31'
+
+# 创建一个空的DataFrame来存储数据
+stock_data = pd.DataFrame()
+
+# 获取每只股票的日收盘价数据
+for stock in stock_list:
+    rs = bs.query_history_k_data_plus(stock,
+                                      "date,close",
+                                      start_date=start_date, end_date=end_date,
+                                      frequency="d", adjustflag="3")
+    # 转换数据格式
+    data_list = []
+    while (rs.error_code == '0') & rs.next():
+        data_list.append(rs.get_row_data())
+    temp_df = pd.DataFrame(data_list, columns=rs.fields)
+    temp_df['close'] = temp_df['close'].astype(float)
+    temp_df.set_index('date', inplace=True)
+
+    # 将数据加入到总的DataFrame中
+    stock_data[stock] = temp_df['close']
+
+# 退出系统
+bs.logout()
+
+# 计算每日收益率
+daily_returns = stock_data.pct_change().dropna()
+
+# 计算年收益率
+annual_returns = daily_returns.mean() * 252
+
+# 计算方差
+variance = daily_returns.var()
+
+# 计算协方差矩阵
+covariance_matrix = daily_returns.cov()
+
+print(annual_returns, variance, covariance_matrix)
+
+
+# Simulated stock data
+np.random.seed(0)  # For reproducibility
+dates = pd.date_range(start="2022-01-01", periods=252, freq='B')
+stocks = ['AAPL', 'MSFT', 'AMZN', 'TSLA', 'GOOGL']
+price_data = pd.DataFrame(np.random.randn(252, len(stocks)), index=dates, columns=stocks)
+daily_returns = price_data.pct_change().dropna()
+monthly_returns = daily_returns.resample('ME').apply(lambda x: (1 + x).prod() - 1)
+
+# Calculate expected monthly returns, variance, and covariance matrix
+expected_monthly_returns = monthly_returns.mean() * 12
+monthly_variance = monthly_returns.var() * 12
+monthly_covariance_matrix = monthly_returns.cov() * 12
+
+# Objective function for portfolio variance
+def portfolio_variance(weights, variance, covariance_matrix):
+    weighted_covariances = covariance_matrix.mul(weights, axis=0).mul(weights, axis=1)
+    return weighted_covariances.to_numpy().sum()
+
+# Constraint for expected return of the portfolio
+def expected_return_constraint(weights, expected_returns, target_return):
+    return np.dot(weights, expected_returns) - target_return
+
+# Optimization
+num_assets = len(expected_monthly_returns)
+initial_guess = np.ones(num_assets) / num_assets
+bounds = tuple((0, 1) for _ in range(num_assets))
+target_return = expected_monthly_returns.mean()
+constraints = (
+    {'type': 'eq', 'fun': lambda weights: np.sum(weights) - 1},
+    {'type': 'eq', 'fun': expected_return_constraint, 'args': (expected_monthly_returns, target_return)}
+)
+
+# Run the optimization
+optimized_result = minimize(
+    fun=portfolio_variance,
+    x0=initial_guess,
+    args=(monthly_variance, monthly_covariance_matrix),
+    method='SLSQP',
+    bounds=bounds,
+    constraints=constraints
+)
+
+# Results
+if optimized_result.success:
+    optimized_weights = optimized_result.x
+    minimized_variance = portfolio_variance(optimized_weights, monthly_variance, monthly_covariance_matrix)
+    expected_portfolio_return = np.dot(optimized_weights, expected_monthly_returns)
+else:
+    optimized_weights = None
+    minimized_variance = None
+    expected_portfolio_return = None
+
+print(optimized_result.success, optimized_weights, minimized_variance, expected_portfolio_return)
+
+import matplotlib.pyplot as plt
+
+# Set the number of portfolios to simulate
+num_portfolios = 10000
+# Create empty lists to store returns, volatility and weights of the imaginary portfolios
+portfolio_returns = []
+portfolio_volatility = []
+portfolio_weights = []
+
+# Set the range of target returns for the efficient frontier
+target_returns = np.linspace(expected_monthly_returns.min(), expected_monthly_returns.max(), 50)
+
+# Efficient frontier
+efficient_frontier_volatility = []
+
+# Simulate random portfolio weights:
+for _ in range(num_portfolios):
+    weights = np.random.random(num_assets)
+    weights /= np.sum(weights)
+    portfolio_weights.append(weights)
+
+    # Expected portfolio return
+    returns = np.dot(weights, expected_monthly_returns)
+    portfolio_returns.append(returns)
+
+    # Expected portfolio volatility
+    volatility = np.sqrt(portfolio_variance(weights, monthly_variance, monthly_covariance_matrix))
+    portfolio_volatility.append(volatility)
+
+# Convert lists to arrays
+portfolio_returns = np.array(portfolio_returns)
+portfolio_volatility = np.array(portfolio_volatility)
+
+# Calculate efficient frontier for the given range of target returns
+for target_return in target_returns:
+    constraints = (
+        {'type': 'eq', 'fun': lambda weights: np.sum(weights) - 1},
+        {'type': 'eq', 'fun': expected_return_constraint, 'args': (expected_monthly_returns, target_return)}
+    )
+
+    result = minimize(portfolio_variance, initial_guess, args=(monthly_variance, monthly_covariance_matrix),
+                      method='SLSQP', bounds=bounds, constraints=constraints)
+
+    if result.success:
+        ef_volatility = np.sqrt(portfolio_variance(result.x, monthly_variance, monthly_covariance_matrix))
+        efficient_frontier_volatility.append(ef_volatility)
+
+# Plotting the random portfolios
+plt.scatter(portfolio_volatility, portfolio_returns, c=portfolio_returns / portfolio_volatility, marker='o',
+            cmap='RdYlBu')
+# Plotting the efficient frontier
+plt.plot(efficient_frontier_volatility, target_returns, linestyle='-', color='black', label='Efficient Frontier')
+
+plt.title('Efficient Frontier with Random Portfolios')
+plt.xlabel('Volatility (Standard Deviation)')
+plt.ylabel('Expected Returns')
+plt.legend(labelspacing=0.8)
+plt.colorbar(label='Sharpe Ratio')
+plt.show()
+
